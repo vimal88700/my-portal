@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#09090b">
   <title>My Academic Hub</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -12,8 +11,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
-    .fade-in { animation: fadeIn 0.2s ease-in-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen pb-16 antialiased select-none">
@@ -23,63 +20,88 @@
     <header class="flex justify-between items-center pt-2">
       <div>
         <h1 class="text-xl font-bold tracking-tight text-white">My Academic Hub</h1>
-        <p id="sync-status" class="text-[11px] text-zinc-400 font-medium">Connecting...</p>
+        <p id="sync-status" class="text-[11px] text-zinc-400 font-medium">Ready</p>
       </div>
-      <button onclick="fetchData()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90 transition">
-        ⚡
-      </button>
+      <div class="flex gap-2">
+        <button onclick="openKeyModal()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90 text-xs">
+          🔑
+        </button>
+        <button onclick="fetchData()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90">
+          ⚡
+        </button>
+      </div>
     </header>
 
-    <!-- Error Banner (shows only if connection fails) -->
+    <!-- Paste Key Setup Box (Shows if Key is Invalid) -->
+    <div id="key-setup" class="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-3">
+      <p class="text-xs font-semibold text-zinc-200">🔑 Paste Your Supabase Anon Key</p>
+      <p class="text-[11px] text-zinc-400">Copy the "Anon" key from your Realme Notes and paste it below:</p>
+      <textarea id="key-input" rows="3" class="w-full p-2.5 bg-black border border-zinc-700 rounded-xl text-xs font-mono text-zinc-200 focus:outline-none focus:border-blue-500" placeholder="Paste eyJhbGci... here"></textarea>
+      <button onclick="saveKey()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 rounded-xl text-xs font-semibold text-white transition">
+        Save & Connect
+      </button>
+    </div>
+
+    <!-- Error Banner -->
     <div id="error-box" class="hidden p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200"></div>
 
-    <!-- Main Schedule Container -->
-    <main id="content" class="space-y-3 fade-in">
-      <div class="p-8 text-center text-zinc-500 text-xs animate-pulse">
-        Loading your schedule...
-      </div>
-    </main>
+    <!-- Content Area -->
+    <main id="content" class="space-y-3"></main>
   </div>
 
   <script>
-    // YOUR VERIFIED SUPABASE KEYS (FIXED BASE URL)
     const SUPABASE_URL = "https://maasiiydnlbdovgkcndo.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hYXNpaXlkbmxiZG92Z2tjbmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzUyMTYsImV4cCI6MjEwNTI1MTIxNn0.QuSb9W5Iaj0_sDFC8WAhTp2JkM3ItfOKqTy2ZxowyO8";
 
-    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    function getActiveKey() {
+      return localStorage.getItem('user_supabase_key') || "";
+    }
+
+    function openKeyModal() {
+      document.getElementById('key-setup').classList.toggle('hidden');
+    }
+
+    function saveKey() {
+      const val = document.getElementById('key-input').value.trim();
+      if (!val.startsWith('ey')) {
+        alert("Please paste a valid key starting with 'ey'!");
+        return;
+      }
+      localStorage.setItem('user_supabase_key', val);
+      document.getElementById('key-setup').classList.add('hidden');
+      fetchData();
+    }
 
     async function fetchData() {
+      const key = getActiveKey();
+      const setupBox = document.getElementById('key-setup');
       const status = document.getElementById('sync-status');
       const errorBox = document.getElementById('error-box');
       errorBox.classList.add('hidden');
-      status.innerText = 'Refreshing...';
+
+      if (!key) {
+        setupBox.classList.remove('hidden');
+        status.innerText = 'Key required';
+        return;
+      }
+
+      status.innerText = 'Connecting...';
 
       try {
+        const client = supabase.createClient(SUPABASE_URL, key);
         const { data, error } = await client.from('academic_records').select('*');
-        if (error) throw error;
 
-        if (!data || data.length === 0) {
-          document.getElementById('content').innerHTML = `
-            <div class="p-8 bg-zinc-900/40 border border-zinc-800 rounded-3xl text-center space-y-1">
-              <p class="text-sm font-semibold text-zinc-300">No data found in database</p>
-              <p class="text-xs text-zinc-500">Run the sync action on GitHub first.</p>
-            </div>`;
-          status.innerText = 'Empty Database';
-          return;
+        if (error) {
+          setupBox.classList.remove('hidden');
+          throw error;
         }
 
-        // Cache data on the phone
-        localStorage.setItem('cached_portal_data', JSON.stringify(data));
+        setupBox.classList.add('hidden');
+        status.innerText = 'Connected';
 
-        const meta = data.find(r => r.id === 'metadata');
-        if (meta && meta.content && meta.content.last_sync) {
-          const t = new Date(meta.content.last_sync);
-          status.innerText = `Updated: ${t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        } else {
-          status.innerText = 'Up to date';
-        }
-
+        // Cache on device
+        localStorage.setItem('cached_records', JSON.stringify(data));
         render(data);
+
       } catch (err) {
         status.innerText = 'Connection Error';
         errorBox.classList.remove('hidden');
@@ -101,7 +123,6 @@
       let list = Array.isArray(raw) ? raw : (raw.data || raw.schdl || raw.periods || raw.result || []);
 
       if (!Array.isArray(list) || list.length === 0) {
-        // Formatted display fallback for custom MyCamu object structures
         container.innerHTML = `
           <div class="p-4 bg-zinc-900/80 border border-zinc-800 rounded-2xl text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96">
             ${JSON.stringify(raw, null, 2)}
@@ -129,8 +150,8 @@
       });
     }
 
-    // Load instantly from phone cache
-    const saved = localStorage.getItem('cached_portal_data');
+    // Try loading offline cache first
+    const saved = localStorage.getItem('cached_records');
     if (saved) {
       try { render(JSON.parse(saved)); } catch(e) {}
     }
