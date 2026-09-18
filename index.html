@@ -3,164 +3,128 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#09090b">
-  <title>My Academic Hub</title>
+  <title>Academic Hub</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
-    .fade-in { animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  </style>
+  <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen pb-20 antialiased select-none">
-  <div class="max-w-md mx-auto p-4 space-y-4">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen p-4 pb-20 select-none">
+  <div class="max-w-md mx-auto space-y-4">
     
     <!-- Header -->
     <header class="flex justify-between items-center pt-2">
       <div>
-        <h1 class="text-2xl font-extrabold tracking-tight text-white">Academic Hub</h1>
-        <p id="sync-status" class="text-xs text-zinc-500 font-medium">Ready</p>
+        <h1 class="text-2xl font-extrabold text-white">Academic Hub</h1>
+        <p id="status" class="text-xs text-zinc-400 font-medium">Checking...</p>
       </div>
-      <div class="flex gap-2">
-        <button onclick="fetchData()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90 transition">
-          ⚡
-        </button>
-      </div>
+      <button onclick="loadNow()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90">
+        ⚡
+      </button>
     </header>
 
-    <!-- Schedule Feed -->
-    <main id="content" class="space-y-3 fade-in"></main>
+    <!-- Paste Key Box (Shows if key is wrong) -->
+    <div id="box" class="p-4 bg-zinc-900 border border-blue-900/60 rounded-2xl space-y-2">
+      <p class="text-xs font-bold text-blue-300">🔑 Paste Your Supabase Key Once:</p>
+      <input id="key-field" type="text" class="w-full p-2 bg-black border border-zinc-700 rounded-xl text-xs text-zinc-200" placeholder="Paste Anon key here...">
+      <button onclick="saveAndGo()" class="w-full py-2 bg-blue-600 rounded-xl text-xs font-bold text-white active:scale-95">
+        Save & Show Schedule
+      </button>
+    </div>
+
+    <!-- Output Feed -->
+    <main id="list" class="space-y-3"></main>
   </div>
 
   <script>
-    const SUPABASE_URL = "https://maasiiydnlbdovgkcndo.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hYXNpaXlkbmxiZG92Z2tjbmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzUyMTYsImV4cCI6MjEwNTI1MTIxNn0.QuSb9W5Iaj0_sDFC8WAhTp2JkM3ItfOKqTy2ZxowyO8";
+    const URL = "https://maasiiydnlbdovgkcndo.supabase.co";
 
-    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    function saveAndGo() {
+      const k = document.getElementById('key-field').value.trim();
+      if (!k) return alert("Please paste the key!");
+      localStorage.setItem('hub_key', k);
+      loadNow();
+    }
 
-    async function fetchData() {
-      const status = document.getElementById('sync-status');
-      status.innerText = 'Refreshing...';
+    async function loadNow() {
+      const key = localStorage.getItem('hub_key') || "";
+      const status = document.getElementById('status');
+      const box = document.getElementById('box');
+      const list = document.getElementById('list');
+
+      if (!key) {
+        box.classList.remove('hidden');
+        status.innerText = "Paste key above 👆";
+        return;
+      }
+
+      status.innerText = "Loading schedule...";
 
       try {
+        const client = supabase.createClient(URL, key);
         const { data, error } = await client.from('academic_records').select('*');
-        if (error) throw error;
 
-        const meta = data.find(r => r.id === 'metadata');
-        if (meta?.content?.last_sync) {
-          const d = new Date(meta.content.last_sync);
-          status.innerText = `Updated: ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-        } else {
-          status.innerText = 'Connected';
+        if (error) {
+          box.classList.remove('hidden');
+          status.innerText = "Key error: " + error.message;
+          return;
         }
 
-        localStorage.setItem('hub_cached_data', JSON.stringify(data));
-        render(data);
-      } catch (err) {
-        status.innerText = 'Offline Cache';
-      }
-    }
+        box.classList.add('hidden');
+        status.innerText = "Connected";
 
-    function render(records) {
-      const container = document.getElementById('content');
-      container.innerHTML = '';
+        const tt = data.find(r => r.id === 'timetable');
+        if (!tt || !tt.content) {
+          list.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No timetable record in database.</div>`;
+          return;
+        }
 
-      const tt = records.find(r => r.id === 'timetable');
-      if (!tt || !tt.content) {
-        container.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No records available.</div>`;
-        return;
-      }
+        // Parse MyCamu records
+        const raw = tt.content;
+        let groups = raw?.output?.data || raw?.data || (Array.isArray(raw) ? raw : []);
+        let events = [];
 
-      const raw = tt.content;
-      // Extract all items from MyCamu's output.data format
-      let rawList = raw?.output?.data || raw?.data || (Array.isArray(raw) ? raw : []);
-      let events = [];
+        groups.forEach(g => {
+          if (g.Holiday) events.push(...g.Holiday);
+          if (g.Schedule) events.push(...g.Schedule);
+          if (g.schedule) events.push(...g.schedule);
+          if (g.Period) events.push(...g.Period);
+          if (g.title || g.start) events.push(g);
+        });
 
-      rawList.forEach(group => {
-        if (group.Holiday && Array.isArray(group.Holiday)) events.push(...group.Holiday);
-        if (group.Schedule && Array.isArray(group.Schedule)) events.push(...group.Schedule);
-        if (group.schedule && Array.isArray(group.schedule)) events.push(...group.schedule);
-        if (group.Period && Array.isArray(group.Period)) events.push(...group.Period);
-        if (group.periods && Array.isArray(group.periods)) events.push(...group.periods);
-        if (group.title || group.start) events.push(group);
+        if (events.length === 0) {
+          list.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No scheduled events.</div>`;
+          return;
+        }
 
-        for (let k of Object.keys(group)) {
-          if (!['Holiday', 'Schedule', 'schedule', 'Period', 'periods'].includes(k) && Array.isArray(group[k])) {
-            events.push(...group[k]);
+        list.innerHTML = '';
+        events.forEach(item => {
+          const isHoliday = item.eTy === 'Holiday' || item.title?.toLowerCase().includes('holiday') || item.allDay;
+          let dateStr = item.start ? new Date(item.start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
+          if (isHoliday) {
+            list.innerHTML += `
+              <div class="p-4 bg-emerald-950/40 border border-emerald-800/60 rounded-2xl space-y-1">
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 uppercase">🎉 Holiday</span>
+                <p class="text-xs text-emerald-300 font-medium">${dateStr}</p>
+                <h3 class="font-bold text-base text-emerald-100">${item.title}</h3>
+              </div>`;
+          } else {
+            list.innerHTML += `
+              <div class="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-1">
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase">${item.time || dateStr || 'Class'}</span>
+                <h3 class="font-semibold text-sm text-white">${item.subject || item.title || 'Lecture'}</h3>
+                <p class="text-xs text-zinc-400">${item.room || ''}</p>
+              </div>`;
           }
-        }
-      });
+        });
 
-      if (events.length === 0) {
-        container.innerHTML = `
-          <div class="p-8 bg-zinc-900/40 border border-zinc-800/60 rounded-3xl text-center space-y-1">
-            <p class="text-sm font-semibold text-zinc-300">No classes scheduled</p>
-            <p class="text-xs text-zinc-500">Your week is currently free!</p>
-          </div>`;
-        return;
+      } catch (e) {
+        status.innerText = "Error: " + e.message;
       }
-
-      events.forEach(item => {
-        const isHoliday = item.eTy === 'Holiday' || item.title?.toLowerCase().includes('holiday') || item.allDay;
-        
-        let dateStr = '';
-        if (item.start) {
-          try {
-            const d = new Date(item.start);
-            dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          } catch(e) {}
-        }
-
-        if (isHoliday) {
-          // Holiday Card
-          container.innerHTML += `
-            <div class="p-4 bg-emerald-950/40 border border-emerald-800/60 rounded-2xl shadow-sm space-y-1.5">
-              <div class="flex justify-between items-center">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">
-                  🎉 Holiday
-                </span>
-                <span class="text-xs text-emerald-300/80 font-medium">${dateStr}</span>
-              </div>
-              <h3 class="font-bold text-base text-emerald-100">${item.title || 'Holiday'}</h3>
-            </div>
-          `;
-        } else {
-          // Class / Lecture Card
-          let timeText = item.time || '';
-          if (!timeText && item.start && item.end) {
-            try {
-              const s = new Date(item.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              const e = new Date(item.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              timeText = `${s} - ${e}`;
-            } catch(e) {}
-          }
-
-          container.innerHTML += `
-            <div class="p-4 bg-zinc-900/90 border border-zinc-800/80 rounded-2xl shadow-sm space-y-1.5">
-              <div class="flex justify-between items-center">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
-                  ${timeText || dateStr || 'Class'}
-                </span>
-                <span class="text-xs text-zinc-400 font-medium">${item.room || item.RmNm || item.location || ''}</span>
-              </div>
-              <h3 class="font-semibold text-sm text-zinc-100">${item.subject || item.title || item.subNm || item.courseName || 'Lecture'}</h3>
-              ${item.faculty || item.teacher || item.empNm ? `<p class="text-xs text-zinc-500">${item.faculty || item.teacher || item.empNm}</p>` : ''}
-            </div>
-          `;
-        }
-      });
     }
 
-    // Instant offline render
-    const saved = localStorage.getItem('hub_cached_data');
-    if (saved) {
-      try { render(JSON.parse(saved)); } catch(e) {}
-    }
-
-    fetchData();
+    loadNow();
   </script>
 </body>
 </html>
