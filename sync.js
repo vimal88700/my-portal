@@ -1,11 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+// Clean the base URL just in case
+const cleanUrl = (process.env.SUPABASE_URL || '').replace(/\/rest\/v1\/?$/, '');
+const supabase = createClient(cleanUrl, process.env.SUPABASE_KEY);
 
 async function run() {
   let cookie = (process.env.CAMU_TOKEN || '').trim();
 
-  // Format cookie if only connect.sid was passed
   if (!cookie.includes('connect.sid=')) {
     cookie = `connect.sid=${cookie}`;
   }
@@ -25,9 +26,11 @@ async function run() {
     'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  // Pull a 7-day range so you get your complete week of classes!
+  const d = new Date();
+  const start = new Date(d.setDate(d.getDate() - d.getDay() + 1)).toISOString().split('T')[0]; // Monday
+  const end = new Date(d.setDate(d.getDate() + 6)).toISOString().split('T')[0]; // Saturday
 
-  // Your exact college timetable parameters from your network capture
   const timetablePayload = {
     "PrID": "5df210adf1dba1d3485db0af",
     "CrID": "5ed60635d94173123c145a64",
@@ -35,14 +38,14 @@ async function run() {
     "DeptID": "5ed60978398834225af3fbf2",
     "SemID": "5ed60cb9a63dc02528730f15",
     "SecID": "5df89db6ba1381ad1fa4ab30",
-    "start": today,
-    "end": today,
+    "start": start,
+    "end": end,
     "schdlTyp": "slctdSchdl",
     "isShowCancelledPeriod": true,
     "isFromTt": true
   };
 
-  console.log("Fetching live timetable from MyCamu...");
+  console.log(`Fetching schedule from ${start} to ${end}...`);
 
   try {
     const res = await fetch('https://www.mycamu.co.in/api/Timetable/get', {
@@ -52,21 +55,25 @@ async function run() {
     });
 
     if (!res.ok) {
-      throw new Error(`Server returned status: ${res.status}`);
+      throw new Error(`MyCamu returned HTTP ${res.status}`);
     }
 
     const data = await res.json();
-    console.log("Timetable data received successfully!");
+    console.log("MyCamu response:", JSON.stringify(data).slice(0, 200));
 
-    // Save timetable into Supabase
-    await supabase.from('academic_records').upsert([
+    // Save into Supabase and throw error if it fails
+    const { error } = await supabase.from('academic_records').upsert([
       { id: 'timetable', content: data, updated_at: new Date().toISOString() },
       { id: 'metadata', content: { last_sync: new Date().toISOString() } }
     ]);
 
-    console.log("Database updated successfully!");
+    if (error) {
+      throw new Error("Supabase Database Error: " + error.message);
+    }
+
+    console.log("Successfully saved full week's timetable to Supabase!");
   } catch (err) {
-    console.error("Sync failed:", err.message);
+    console.error("Error:", err.message);
     process.exit(1);
   }
 }
