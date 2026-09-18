@@ -6,14 +6,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#09090b">
-  <title>Academic Hub</title>
+  <title>My Academic Hub</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
-    .fade { animation: f 0.15s ease-in-out; }
-    @keyframes f { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.2s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen pb-16 antialiased select-none">
@@ -23,138 +23,119 @@
     <header class="flex justify-between items-center pt-2">
       <div>
         <h1 class="text-xl font-bold tracking-tight text-white">My Academic Hub</h1>
-        <p id="sync-status" class="text-[11px] text-zinc-500 font-medium">Ready</p>
+        <p id="sync-status" class="text-[11px] text-zinc-400 font-medium">Connecting...</p>
       </div>
-      <button onclick="refreshFromDatabase()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90 transition">
+      <button onclick="fetchData()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90 transition">
         ⚡
       </button>
     </header>
 
-    <!-- Tabs -->
-    <div class="grid grid-cols-2 p-1 bg-zinc-900/90 border border-zinc-800/80 rounded-2xl">
-      <button id="tab-tt" onclick="switchTab('timetable')" class="py-2 text-xs font-semibold rounded-xl bg-zinc-800 text-white shadow-sm transition">
-        Timetable
-      </button>
-      <button id="tab-as" onclick="switchTab('assignments')" class="py-2 text-xs font-semibold rounded-xl text-zinc-400 transition">
-        Assignments
-      </button>
-    </div>
+    <!-- Error Banner (shows only if connection fails) -->
+    <div id="error-box" class="hidden p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200"></div>
 
-    <!-- Content Area -->
-    <main id="content" class="space-y-3 fade"></main>
+    <!-- Main Schedule Container -->
+    <main id="content" class="space-y-3 fade-in">
+      <div class="p-8 text-center text-zinc-500 text-xs animate-pulse">
+        Loading your schedule...
+      </div>
+    </main>
   </div>
 
   <script>
-    // PUT YOUR KEYS HERE
-    const SUPABASE_URL = "https://maasiiydnlbdovgkcndo.supabase.co/rest/v1/
-      ";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hYXNpaXlkbmxiZG92Z2tjbmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzUyMTYsImV4cCI6MjEwNTI1MTIxNn0.QuSb9W5laj0_sDFC8WAhTp2JkM3ItfOKqTy2ZxowyO8
-      ";
+    // YOUR VERIFIED SUPABASE KEYS (FIXED BASE URL)
+    const SUPABASE_URL = "https://maasiiydnlbdovgkcndo.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hYXNpaXlkbmxiZG92Z2tjbmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NzUyMTYsImV4cCI6MjEwNTI1MTIxNn0.QuSb9W5Iaj0_sDFC8WAhTp2JkM3ItfOKqTy2ZxowyO8";
 
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    let activeTab = 'timetable';
-    let dataCache = { timetable: [], assignments: [], last_sync: null };
 
-    // Instant load from memory (0 milliseconds)
-    function init() {
-      const local = localStorage.getItem('hub_cache');
-      if (local) {
-        try {
-          dataCache = JSON.parse(local);
-          render();
-        } catch (e) {}
-      }
-      refreshFromDatabase();
-    }
-
-    // Silent background check
-    async function refreshFromDatabase() {
+    async function fetchData() {
       const status = document.getElementById('sync-status');
-      status.innerText = 'Checking updates...';
+      const errorBox = document.getElementById('error-box');
+      errorBox.classList.add('hidden');
+      status.innerText = 'Refreshing...';
 
       try {
         const { data, error } = await client.from('academic_records').select('*');
-        if (error || !data) throw error;
+        if (error) throw error;
 
-        data.forEach(r => {
-          if (r.id === 'timetable') dataCache.timetable = r.content;
-          if (r.id === 'assignments') dataCache.assignments = r.content;
-          if (r.id === 'metadata') dataCache.last_sync = r.content.last_sync;
-        });
+        if (!data || data.length === 0) {
+          document.getElementById('content').innerHTML = `
+            <div class="p-8 bg-zinc-900/40 border border-zinc-800 rounded-3xl text-center space-y-1">
+              <p class="text-sm font-semibold text-zinc-300">No data found in database</p>
+              <p class="text-xs text-zinc-500">Run the sync action on GitHub first.</p>
+            </div>`;
+          status.innerText = 'Empty Database';
+          return;
+        }
 
-        localStorage.setItem('hub_cache', JSON.stringify(dataCache));
+        // Cache data on the phone
+        localStorage.setItem('cached_portal_data', JSON.stringify(data));
 
-        if (dataCache.last_sync) {
-          const t = new Date(dataCache.last_sync);
+        const meta = data.find(r => r.id === 'metadata');
+        if (meta && meta.content && meta.content.last_sync) {
+          const t = new Date(meta.content.last_sync);
           status.innerText = `Updated: ${t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         } else {
           status.innerText = 'Up to date';
         }
 
-        render();
+        render(data);
       } catch (err) {
-        status.innerText = 'Showing offline cache';
+        status.innerText = 'Connection Error';
+        errorBox.classList.remove('hidden');
+        errorBox.innerText = "Error: " + (err.message || err);
       }
     }
 
-    function switchTab(t) {
-      activeTab = t;
-      const isTt = t === 'timetable';
-      document.getElementById('tab-tt').className = isTt 
-        ? "py-2 text-xs font-semibold rounded-xl bg-zinc-800 text-white shadow-sm transition"
-        : "py-2 text-xs font-semibold rounded-xl text-zinc-400 transition";
-      document.getElementById('tab-as').className = !isTt 
-        ? "py-2 text-xs font-semibold rounded-xl bg-zinc-800 text-white shadow-sm transition"
-        : "py-2 text-xs font-semibold rounded-xl text-zinc-400 transition";
-      render();
-    }
+    function render(records) {
+      const container = document.getElementById('content');
+      container.innerHTML = '';
 
-    function render() {
-      const box = document.getElementById('content');
-      box.className = 'space-y-3 fade';
-      box.innerHTML = '';
+      const tt = records.find(r => r.id === 'timetable');
+      if (!tt || !tt.content) {
+        container.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No timetable record found.</div>`;
+        return;
+      }
 
-      const items = activeTab === 'timetable' ? dataCache.timetable : dataCache.assignments;
-      const list = Array.isArray(items) ? items : (items?.data || items?.result || []);
+      const raw = tt.content;
+      let list = Array.isArray(raw) ? raw : (raw.data || raw.schdl || raw.periods || raw.result || []);
 
-      if (list.length === 0) {
-        box.innerHTML = `
-          <div class="p-8 bg-zinc-900/40 border border-zinc-800/60 rounded-3xl text-center space-y-1">
-            <p class="text-sm font-semibold text-zinc-300">No entries yet</p>
-            <p class="text-xs text-zinc-500">Run a manual sync on GitHub to pull data.</p>
+      if (!Array.isArray(list) || list.length === 0) {
+        // Formatted display fallback for custom MyCamu object structures
+        container.innerHTML = `
+          <div class="p-4 bg-zinc-900/80 border border-zinc-800 rounded-2xl text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96">
+            ${JSON.stringify(raw, null, 2)}
           </div>`;
         return;
       }
 
       list.forEach(item => {
-        if (activeTab === 'timetable') {
-          box.innerHTML += `
-            <div class="p-4 bg-zinc-900/90 border border-zinc-800/80 rounded-2xl shadow-sm space-y-1.5">
-              <div class="flex justify-between items-center">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
-                  ${item.time || item.period || 'Scheduled'}
-                </span>
-                <span class="text-xs text-zinc-400">${item.room || 'Room N/A'}</span>
-              </div>
-              <h3 class="font-semibold text-sm text-zinc-100">${item.subject || item.courseName || 'Course'}</h3>
-              <p class="text-xs text-zinc-500">${item.faculty || item.teacher || ''}</p>
-            </div>`;
-        } else {
-          box.innerHTML += `
-            <div class="p-4 bg-zinc-900/90 border border-zinc-800/80 rounded-2xl shadow-sm space-y-2">
-              <div class="flex justify-between items-center">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
-                  Due: ${item.dueDate || 'Pending'}
-                </span>
-              </div>
-              <h3 class="font-semibold text-sm text-zinc-100">${item.title || item.name || 'Assignment'}</h3>
-              <p class="text-xs text-zinc-400">${item.description || item.subject || ''}</p>
-            </div>`;
-        }
+        const time = item.time || (item.frTm && item.toTm ? `${item.frTm} - ${item.toTm}` : item.period || 'Class');
+        const subject = item.subject || item.subNm || item.courseName || item.title || item.CrNm || 'Course';
+        const room = item.room || item.RmNm || item.location || '';
+        const faculty = item.faculty || item.empNm || item.teacher || item.staff || '';
+
+        container.innerHTML += `
+          <div class="p-4 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-sm space-y-1.5">
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
+                ${time}
+              </span>
+              <span class="text-xs text-zinc-400">${room}</span>
+            </div>
+            <h3 class="font-semibold text-sm text-zinc-100">${subject}</h3>
+            ${faculty ? `<p class="text-xs text-zinc-500">${faculty}</p>` : ''}
+          </div>`;
       });
     }
 
-    init();
+    // Load instantly from phone cache
+    const saved = localStorage.getItem('cached_portal_data');
+    if (saved) {
+      try { render(JSON.parse(saved)); } catch(e) {}
+    }
+
+    fetchData();
   </script>
 </body>
 </html>
