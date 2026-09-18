@@ -7,41 +7,45 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+  <style>body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }</style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen p-4 pb-20 select-none">
   <div class="max-w-md mx-auto space-y-4">
     
-    <!-- Header -->
+    <!-- Top Header -->
     <header class="flex justify-between items-center pt-2">
       <div>
         <h1 class="text-2xl font-extrabold text-white">Academic Hub</h1>
-        <p id="status" class="text-xs text-zinc-400 font-medium">Checking...</p>
+        <p id="status" class="text-xs text-zinc-400 font-medium">Ready</p>
       </div>
       <button onclick="loadNow()" class="p-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl active:scale-90">
         ⚡
       </button>
     </header>
 
-    <!-- Paste Key Box (Shows if key is wrong) -->
+    <!-- Key Entry Box -->
     <div id="box" class="p-4 bg-zinc-900 border border-blue-900/60 rounded-2xl space-y-2">
-      <p class="text-xs font-bold text-blue-300">🔑 Paste Your Supabase Key Once:</p>
-      <input id="key-field" type="text" class="w-full p-2 bg-black border border-zinc-700 rounded-xl text-xs text-zinc-200" placeholder="Paste Anon key here...">
-      <button onclick="saveAndGo()" class="w-full py-2 bg-blue-600 rounded-xl text-xs font-bold text-white active:scale-95">
+      <p class="text-xs font-bold text-blue-300">🔑 Paste Your Supabase Anon Key:</p>
+      <input id="key-field" type="text" class="w-full p-2.5 bg-black border border-zinc-700 rounded-xl text-xs text-zinc-200 font-mono focus:outline-none" placeholder="Paste eyJhbGci... here">
+      <button onclick="saveAndGo()" class="w-full py-2.5 bg-blue-600 rounded-xl text-xs font-bold text-white active:scale-95 transition">
         Save & Show Schedule
       </button>
     </div>
 
-    <!-- Output Feed -->
+    <!-- Output List -->
     <main id="list" class="space-y-3"></main>
   </div>
 
   <script>
-    const URL = "https://maasiiydnlbdovgkcndo.supabase.co";
+    // FIXED: Renamed to avoid browser conflict with window.URL
+    const SUPABASE_HOST = "https://maasiiydnlbdovgkcndo.supabase.co";
 
     function saveAndGo() {
       const k = document.getElementById('key-field').value.trim();
-      if (!k) return alert("Please paste the key!");
+      if (!k) {
+        alert("Please paste your key first!");
+        return;
+      }
       localStorage.setItem('hub_key', k);
       loadNow();
     }
@@ -61,7 +65,7 @@
       status.innerText = "Loading schedule...";
 
       try {
-        const client = supabase.createClient(URL, key);
+        const client = supabase.createClient(SUPABASE_HOST, key);
         const { data, error } = await client.from('academic_records').select('*');
 
         if (error) {
@@ -75,20 +79,19 @@
 
         const tt = data.find(r => r.id === 'timetable');
         if (!tt || !tt.content) {
-          list.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No timetable record in database.</div>`;
+          list.innerHTML = `<div class="p-6 text-center text-zinc-500 text-xs">No timetable record found.</div>`;
           return;
         }
 
-        // Parse MyCamu records
         const raw = tt.content;
         let groups = raw?.output?.data || raw?.data || (Array.isArray(raw) ? raw : []);
         let events = [];
 
         groups.forEach(g => {
-          if (g.Holiday) events.push(...g.Holiday);
-          if (g.Schedule) events.push(...g.Schedule);
-          if (g.schedule) events.push(...g.schedule);
-          if (g.Period) events.push(...g.Period);
+          if (g.Holiday && Array.isArray(g.Holiday)) events.push(...g.Holiday);
+          if (g.Schedule && Array.isArray(g.Schedule)) events.push(...g.Schedule);
+          if (g.schedule && Array.isArray(g.schedule)) events.push(...g.schedule);
+          if (g.Period && Array.isArray(g.Period)) events.push(...g.Period);
           if (g.title || g.start) events.push(g);
         });
 
@@ -105,14 +108,14 @@
           if (isHoliday) {
             list.innerHTML += `
               <div class="p-4 bg-emerald-950/40 border border-emerald-800/60 rounded-2xl space-y-1">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 uppercase">🎉 Holiday</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 uppercase tracking-wider">🎉 Holiday</span>
                 <p class="text-xs text-emerald-300 font-medium">${dateStr}</p>
                 <h3 class="font-bold text-base text-emerald-100">${item.title}</h3>
               </div>`;
           } else {
             list.innerHTML += `
               <div class="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-1">
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase">${item.time || dateStr || 'Class'}</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase tracking-wider">${item.time || dateStr || 'Class'}</span>
                 <h3 class="font-semibold text-sm text-white">${item.subject || item.title || 'Lecture'}</h3>
                 <p class="text-xs text-zinc-400">${item.room || ''}</p>
               </div>`;
@@ -125,6 +128,4 @@
     }
 
     loadNow();
-  </script>
-</body>
-</html>
+  <
